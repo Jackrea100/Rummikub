@@ -27,3 +27,12 @@ class Tile:
     def __lt__(self, other):
         # Sorts by value, then color
         return (self.val, self.color) < (other.val, other.color)
+
+    def __eq__(self, other):
+        if not isinstance(other, Tile):
+            return False
+        return (self.color, self.val, self.is_joker) == (other.color, other.val, other.is_joker)
+
+    def __hash__(self):
+        # Necessary for using Tiles in sets or as dict keys
+        return hash((self.color, self.val, self.is_joker))

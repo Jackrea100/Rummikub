@@ -11,6 +11,13 @@ class Meld:
     def __repr__(self):
         return f"Meld: {self.tiles}"
 
+    def __iter__(self):
+        """
+        Allows the Meld to be treated like a list/sequence.
+        Enables: set(meld), list(meld), for tile in meld
+        """
+        return iter(self.tiles)
+
     def is_valid(self) -> bool:
         """
         The 'Traffic Cop' method. Checks if a list of tiles forms a single,

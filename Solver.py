@@ -17,17 +17,17 @@ class Solver:
         Calculates the strategic score for a single meld (Heuristic Brain).
         This method must be implemented by the user based on desired strategy.
         """
-        score = len(meld.tiles)  # Base score: tile count
+        # score = len(meld.tiles)  # Base score: tile count
+        #
+        # # Example Heuristics (User must implement):
+        # for tile in meld.tiles:
+        #     if tile.val in [10, 11, 12, 13]:  # Risk Aversion (Dump high value)
+        #         score += 15
+        #
+        # # You would need a meld.is_run() helper here:
+        # # if meld.is_run(): score += 10 # Flexibility bonus
 
-        # Example Heuristics (User must implement):
-        for tile in meld.tiles:
-            if tile.val in [10, 11, 12, 13]:  # Risk Aversion (Dump high value)
-                score += 15
-
-        # You would need a meld.is_run() helper here:
-        # if meld.is_run(): score += 10 # Flexibility bonus
-
-        return score
+        return len(meld.tiles)
 
     def find_best_move(self, rack: Rack, board: Board, initial_meld_points: int = 30) -> Optional[List[Meld]]:
         # 1. Clear the cache for this new turn
@@ -58,14 +58,33 @@ class Solver:
         """
         RECURSIVE MAX SET PACKING ALGORITHM (User must implement the logic described in the guide)
         """
+        tiles_key = frozenset(tiles_to_cover)
         # The logic here must implement the four steps:
         # 1. Cache Check
+        if tiles_key in self.memo:
+            return self.memo[tiles_key]
+
         # 2. Base Case: if not tiles_to_cover: return (0, [])
+        if not tiles_to_cover:
+            return (0, [])
+
         # 3. Recursive Loop with 'best_solution_so_far' tracking
+        best_solution = (0, [])
+        for meld in all_melds:
+            if set(meld).issubset(tiles_to_cover):
+                current_score = self._calculate_meld_score(meld)
+                remaining_tiles = tuple(set(tiles_to_cover) - set(meld))
+                remainder_score, remainder_melds = self._find_best_combination(remaining_tiles, all_melds)
+                total_score = current_score + remainder_score
+                if total_score > best_solution[0]:
+                    best_solution = (total_score, [meld] + remainder_melds)
+
         # 4. Cache and Return the final result
+        self.memo[tiles_key] = best_solution
 
         # This must return a tuple[int, List[Meld]]
-        return (0, [])
+        return best_solution
+
 
         # --- Accountant Helpers (User must implement these) ---
 
