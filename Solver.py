@@ -37,11 +37,10 @@ class Solver:
         self.memo = {}
         all_tiles = rack.tiles + board.get_all_tiles()
 
-        # 1. Identify IDs for prioritization (Use Rack Tiles)
+        # 1. Identify IDs for rack usage
         rack_tile_ids = {id(t) for t in rack.tiles}
 
-        # 2. Identify "Existing Melds" (CRITICAL MISSING STEP)
-        # We assume if a set of tiles is already together on the board, it's a "good" set.
+        # 2. Identify Existing Melds (Exact & Subsets)
         existing_meld_sets = [frozenset(m.tiles) for m in board.melds]
 
         tile_components = self._get_connected_components(all_tiles)
@@ -58,21 +57,33 @@ class Solver:
             # print(f"  > Solving Component {i+1} (Size {len(component_tiles)})...")
             possible_melds = self._find_all_possible_melds(component_tiles)
 
-            # --- NEW PRIORITY LOGIC ---
+            # --- UPGRADED PRIORITY LOGIC ---
             def meld_priority(m: Meld):
-                # Priority 1: Uses rack tiles? (We want to play!)
+                m_set = frozenset(m.tiles)
+
+                # Priority 1: Rack Usage
                 rack_usage = sum(1 for t in m.tiles if id(t) in rack_tile_ids)
 
-                # Priority 2: Is it STABLE? (Matches an existing meld exactly?)
-                # This forces the solver to keep the board structure if possible.
-                is_existing = 1 if frozenset(m.tiles) in existing_meld_sets else 0
+                # Priority 2: Exact Match (Perfect Stability)
+                is_exact = 1 if m_set in existing_meld_sets else 0
 
-                # Priority 3: Bigger is generally better
-                return (rack_usage, is_existing, len(m.tiles))
+                # Priority 3: Subset Match (Partial Stability) [NEW]
+                # If this meld is a subset of an OLD meld, it preserves the "style" (Run vs Group)
+                is_subset = 0
+                if not is_exact:  # Only check if not exact
+                    for old_set in existing_meld_sets:
+                        if m_set.issubset(old_set):
+                            is_subset = 1
+                            break
 
-            # Sort descending: Rack Usage -> Existing Bonus -> Size
+                # Priority 4: Size (Bigger is better)
+                # Priority 5: Type Preference (Tie-breaker: Prefer Runs to Groups to reduce chaos)
+                is_run = 1 if m.is_run() else 0  # You might need to add is_run() to Meld, or check logic
+
+                return rack_usage, is_exact, is_subset, len(m.tiles), is_run
+
             possible_melds.sort(key=meld_priority, reverse=True)
-            # --------------------------
+            # -------------------------------
 
             (score, best_melds) = self._find_best_combination(tuple(component_tiles), possible_melds, time.time(),
                                                               timeout)

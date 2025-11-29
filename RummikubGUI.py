@@ -53,10 +53,17 @@ class RummikubGUI:
 
     # --- Drawing Logic ---
 
-    def refresh_display(self):
+    def refresh_display(self, highlight_tiles=None):
         """Redraws the entire board and rack using a smart Flow Layout."""
         # 1. Clear Board Canvas
         self.board_canvas.delete("all")
+
+        # --- FIX: Convert objects to IDs ---
+        # We store the memory addresses (IDs) so we can distinguish duplicates
+        highlight_ids = set()
+        if highlight_tiles:
+            highlight_ids = {id(t) for t in highlight_tiles}
+        # -----------------------------------
 
         # Layout Constants
         start_x = 20
@@ -64,34 +71,27 @@ class RummikubGUI:
         current_x = start_x
         current_y = start_y
 
-        tile_width = 40  # Must match what is used in draw_meld
-        tile_gap = 5  # Must match what is used in draw_meld
-        meld_gap = 30  # Horizontal space between distinct melds
-        row_height = 70  # Vertical space for each row of melds
+        tile_width = 40
+        tile_gap = 5
+        meld_gap = 30
+        row_height = 70
 
-        # Get current window width to know when to wrap
-        # Default to 1000 if window hasn't initialized/drawn yet
         window_width = self.board_canvas.winfo_width()
         if window_width < 100:
             window_width = 1000
 
             # Draw each Meld on the board
         for meld in self.board.melds:
-            # Calculate the pixel width of this specific meld
-            # Width = (Tiles * 40) + (Gaps * 5)
             num_tiles = len(meld.tiles)
             meld_pixel_width = (num_tiles * tile_width) + ((num_tiles - 1) * tile_gap)
 
-            # Check if this meld fits on the current line
-            # If (current X + width) goes past the edge, wrap to new line.
             if current_x + meld_pixel_width > window_width - 20:
-                current_x = start_x  # Reset X
-                current_y += row_height  # Move Y down
+                current_x = start_x
+                current_y += row_height
 
-            # Draw the meld at the calculated position
-            self.draw_meld(self.board_canvas, meld, current_x, current_y)
+            # --- UPDATE CALL: Pass highlight_ids instead of the list ---
+            self.draw_meld(self.board_canvas, meld, current_x, current_y, highlight_ids)
 
-            # Move X pointer to the right for the next meld
             current_x += meld_pixel_width + meld_gap
 
         # 2. Draw Rack (Standard flow)
@@ -102,7 +102,7 @@ class RummikubGUI:
             lbl = self.create_tile_widget(self.rack_frame, tile)
             lbl.pack(side=tk.LEFT, padx=2, pady=10)
 
-    def draw_meld(self, canvas, meld, start_x, start_y):
+    def draw_meld(self, canvas, meld, start_x, start_y, highlight_ids):
         """Draws a grouping of tiles on the canvas to represent a Meld."""
         tile_width = 40
         tile_height = 50
@@ -111,14 +111,21 @@ class RummikubGUI:
         current_x = start_x
 
         for tile in meld.tiles:
-            # Draw Tile Rectangle
-            canvas.create_rectangle(current_x, start_y, current_x + tile_width, start_y + tile_height, fill="#f0f0f0",
-                                    outline="black", width=2)
+            # Determine Background Color
+            bg_color = "#f0f0f0"  # Default Grey/White
 
-            # Draw Text (Color mapping)
+            # --- FIX: Check Identity ---
+            if id(tile) in highlight_ids:
+                bg_color = "#ffff99"  # Light Yellow Highlight
+            # ---------------------------
+
+            # Draw Tile Rectangle with new BG color
+            canvas.create_rectangle(current_x, start_y, current_x + tile_width, start_y + tile_height,
+                                    fill=bg_color, outline="black", width=2)
+
+            # Draw Text
             text_color = tile.color.lower()
             if text_color == "joker": text_color = "purple"
-
             display_text = "J" if tile.is_joker else str(tile.val)
 
             canvas.create_text(current_x + tile_width / 2, start_y + tile_height / 2, text=display_text,
@@ -274,23 +281,43 @@ class RummikubGUI:
 
         # 3. Handle Result
         if best_move:
-            MovePrinter.print_move_guide(self.rack, self.board, best_move)
+            # A. Calculate which tiles came from the rack
+            # We need to identify the specific Tile objects in the new configuration
+            # that were NOT in the old configuration.
 
-            new_board_tiles = [t for meld in best_move for t in meld.tiles]
+            # Simple list subtraction doesn't work well for objects with same value but diff memory addresses.
+            # So we use our ID-based logic or Counter logic again.
 
-            tiles_to_remove_counter = Counter(new_board_tiles) - Counter(old_board_tiles)
-            tiles_to_remove = list(tiles_to_remove_counter.elements())
+            # Strategy:
+            # 1. Count what we had on the board before.
+            # 2. Iterate through the NEW board. If we see a tile we had before, decrement count.
+            # 3. If we don't have it in our 'old' count, it must be new (from rack)!
 
-            # Remove them from the rack
-            self.rack.remove_tiles(tiles_to_remove)
+            from collections import Counter
+            old_counts = Counter(old_board_tiles)
+
+            highlight_tiles = []  # List of specific Tile objects to highlight
+
+            for meld in best_move:
+                for tile in meld.tiles:
+                    if old_counts[tile] > 0:
+                        old_counts[tile] -= 1
+                    else:
+                        # We didn't have this tile on the board before. It's new!
+                        highlight_tiles.append(tile)
+
+            # B. Remove from Rack (Logic remains the same)
+            # We can just use the list of highlights we just found!
+            self.rack.remove_tiles(highlight_tiles)
+
+            # C. Update Board
             self.board.melds = best_move
 
-            # Note: A real game loop would also remove the tiles from the rack.
-            # For this visualizer, we might just update the board to show the 'Solution'.
-            # Or we could calculate which tiles were used and remove them.
+            # D. Update Display with Highlights
+            # We pass the list of 'new' tiles to the refresh method
+            self.refresh_display(highlight_tiles=highlight_tiles)
 
-            self.refresh_display()
-            messagebox.showinfo("Solver Result", "Best move found and applied to board!")
+            messagebox.showinfo("Solver Result", f"Best move found! \n\nHighlighted tiles were played from your rack.")
         else:
             messagebox.showwarning("Solver Result", "No valid moves found.")
 

@@ -96,3 +96,11 @@ class Meld:
             return True  # Valid Run
 
         return False
+
+    def is_run(self) -> bool:
+        # Simple check: Are colors same?
+        if not self.tiles: return False
+        # Filter jokers
+        real = [t for t in self.tiles if not t.is_joker]
+        if not real: return True  # All jokers are ambiguous, treat as run?
+        return len(set(t.color for t in real)) == 1
