@@ -31,79 +31,105 @@ class Solver:
         return len(meld.tiles)
 
     def find_best_move(self, rack: Rack, board: Board, initial_meld_points: int = 30) -> Optional[List[Meld]]:
-        # 1. Clear the cache for this new turn
-        self.memo = {}
+        import time
+        print("--- SOLVER STARTED ---")
 
-        # 2. Get all available tiles
+        self.memo = {}
         all_tiles = rack.tiles + board.get_all_tiles()
 
-        # --- OPTIMIZATION START ---
+        # 1. Identify Rack Tile IDs for prioritization
+        # We use IDs (memory addresses) to handle duplicates correctly
+        rack_tile_ids = {id(t) for t in rack.tiles}
 
-        # 3. Split the board into independent islands
-        # (Make sure this method name matches what you wrote: _get_connected_components)
         tile_components = self._get_connected_components(all_tiles)
+
+        sizes = [len(c) for c in tile_components]
+        print(f"DEBUG: Found {len(tile_components)} components. Sizes: {sizes}")
 
         final_solution_melds = []
 
-        # 4. Solve each island separately
-        for component_tiles in tile_components:
-            # A. Find possible melds JUST for this small group
+        for i, component_tiles in enumerate(tile_components):
+            comp_start = time.time()
+
+            # Timeout Logic: If component is huge (>20), set a 5s limit
+            timeout = 5.0 if len(component_tiles) > 20 else 0
+
+            print(f"  > Solving Component {i + 1} (Size {len(component_tiles)})...")
             possible_melds = self._find_all_possible_melds(component_tiles)
 
-            # B. Solve exact cover/max packing JUST for this small group
-            (score, best_melds) = self._find_best_combination(tuple(component_tiles), possible_melds)
+            # --- NEW: PRIORITIZE RACK TILES ---
+            # Sort melds so we try the ones using our rack FIRST.
+            # Key 1: Number of rack tiles used (Descending)
+            # Key 2: Total size of meld (Descending)
+            def meld_priority(m: Meld):
+                rack_usage = sum(1 for t in m.tiles if id(t) in rack_tile_ids)
+                return (rack_usage, len(m.tiles))
 
-            # C. Add the solution for this island to the master list
+            possible_melds.sort(key=meld_priority, reverse=True)
+            # ----------------------------------
+
+            # Run the recursive solver with the sorted list
+            (score, best_melds) = self._find_best_combination(tuple(component_tiles), possible_melds, time.time(),
+                                                              timeout)
+
             if best_melds:
                 final_solution_melds.extend(best_melds)
 
-        # --- OPTIMIZATION END ---
+            print(f"    - Finished in {time.time() - comp_start:.4f}s")
 
-        # 5. Return the combined result
+        print(f"--- SOLVER FINISHED ---")
+
         if final_solution_melds:
             return final_solution_melds
 
         return None
 
-    # --- Recursive Core ---
-    def _find_best_combination(self, tiles_to_cover: tuple[Tile, ...], all_melds: List[Meld]) -> Tuple[int, List[Meld]]:
-        """
-        RECURSIVE MAX SET PACKING ALGORITHM (User must implement the logic described in the guide)
-        """
+    # Update Signature to accept start_time and timeout
+    def _find_best_combination(self, tiles_to_cover: tuple[Tile, ...], all_melds: List[Meld], start_time: float = 0,
+                               timeout: float = 0) -> Tuple[int, List[Meld]]:
+        import time
+
+        # --- NEW: Timeout Check ---
+        if timeout > 0 and (time.time() - start_time > timeout):
+            return 0, []  # Stop searching this branch
+        # --------------------------
+
         tiles_key = frozenset(tiles_to_cover)
-        # The logic here must implement the four steps:
-        # 1. Cache Check
         if tiles_key in self.memo:
             return self.memo[tiles_key]
 
-        # 2. Base Case: if not tiles_to_cover: return (0, [])
         if not tiles_to_cover:
             return 0, []
 
-        # 3. Recursive Loop with 'best_solution_so_far' tracking
         best_solution = (0, [])
+
+        # Sort melds by size (descending) to try "good" moves first before timeout
+        # all_melds.sort(key=lambda m: len(m.tiles), reverse=True)
+
         for meld in all_melds:
+            # --- NEW: Timeout Check inside loop ---
+            if timeout > 0 and (time.time() - start_time > timeout):
+                break  # Stop trying new melds, return what we have
+            # --------------------------------------
+
             if set(meld).issubset(tiles_to_cover):
                 current_score = self._calculate_meld_score(meld)
 
                 temp_remaining = list(tiles_to_cover)
                 for tile in meld:
-                    temp_remaining.remove(tile)  # Removes only the first matching instance
+                    temp_remaining.remove(tile)
                 remaining_tiles = tuple(temp_remaining)
 
-                remainder_score, remainder_melds = self._find_best_combination(remaining_tiles, all_melds)
+                # Pass the time info down
+                remainder_score, remainder_melds = self._find_best_combination(remaining_tiles, all_melds, start_time,
+                                                                               timeout)
+
                 total_score = current_score + remainder_score
                 if total_score > best_solution[0]:
                     best_solution = (total_score, [meld] + remainder_melds)
 
-        # 4. Cache and Return the final result
         self.memo[tiles_key] = best_solution
-
-        # This must return a tuple[int, List[Meld]]
         return best_solution
-
-
-        # --- Accountant Helpers (User must implement these) ---
 
     def _find_all_possible_melds(self, tiles: List[Tile]) -> List[Meld]:
         # Calls the two sub-helpers
@@ -202,23 +228,25 @@ class Solver:
 
     def _get_connected_components(self, tiles: List[Tile]) -> List[List[Tile]]:
         graph = self._build_intersection_graph(tiles)
-        visited = set()
+        visited_ids = set()  # Track by ID (memory address) to handle duplicates
         components = []
 
         for tile in tiles:
-            if tile in visited:
+            # Check by ID, not value!
+            if id(tile) in visited_ids:
                 continue
 
             stack = [tile]
             curr_component = [tile]
+            visited_ids.add(id(tile))  # Mark start as visited
 
             while stack:
                 curr_tile = stack.pop()
-                visited.add(curr_tile)
 
                 for neighbor in graph[curr_tile]:
-                    if neighbor not in visited:
-                        visited.add(neighbor)
+                    # Check by ID
+                    if id(neighbor) not in visited_ids:
+                        visited_ids.add(id(neighbor))
                         stack.append(neighbor)
                         curr_component.append(neighbor)
 
