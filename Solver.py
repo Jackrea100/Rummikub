@@ -37,13 +37,11 @@ class Solver:
         self.memo = {}
         all_tiles = rack.tiles + board.get_all_tiles()
 
-        # 1. Identify IDs for prioritization
+        # 1. Identify IDs for prioritization (Use Rack Tiles)
         rack_tile_ids = {id(t) for t in rack.tiles}
 
-        # 2. Identify "Existing Melds" (Stability)
-        # We create a list of sets. Each set contains the tiles of an existing board meld.
-        # This allows us to quickly check if a candidate meld is just a copy of an old one.
-        # We use 'frozenset' so we can assume order doesn't matter for equality.
+        # 2. Identify "Existing Melds" (CRITICAL MISSING STEP)
+        # We assume if a set of tiles is already together on the board, it's a "good" set.
         existing_meld_sets = [frozenset(m.tiles) for m in board.melds]
 
         tile_components = self._get_connected_components(all_tiles)
@@ -57,22 +55,22 @@ class Solver:
             comp_start = time.time()
             timeout = 5.0 if len(component_tiles) > 20 else 0
 
-            print(f"  > Solving Component {i + 1} (Size {len(component_tiles)})...")
+            # print(f"  > Solving Component {i+1} (Size {len(component_tiles)})...")
             possible_melds = self._find_all_possible_melds(component_tiles)
 
             # --- NEW PRIORITY LOGIC ---
             def meld_priority(m: Meld):
-                # Criteria 1: Does it use my rack tiles? (Highest Priority)
+                # Priority 1: Uses rack tiles? (We want to play!)
                 rack_usage = sum(1 for t in m.tiles if id(t) in rack_tile_ids)
 
-                # Criteria 2: Is it an exact copy of a meld already on the board?
-                # If yes, it's "stable" and safe. Prioritize it over random new permutations.
+                # Priority 2: Is it STABLE? (Matches an existing meld exactly?)
+                # This forces the solver to keep the board structure if possible.
                 is_existing = 1 if frozenset(m.tiles) in existing_meld_sets else 0
 
-                # Criteria 3: Larger melds are generally better
-                return rack_usage, is_existing, len(m.tiles)
+                # Priority 3: Bigger is generally better
+                return (rack_usage, is_existing, len(m.tiles))
 
-            # Sort descending: High Rack Usage -> Existing Melds -> Big Melds
+            # Sort descending: Rack Usage -> Existing Bonus -> Size
             possible_melds.sort(key=meld_priority, reverse=True)
             # --------------------------
 

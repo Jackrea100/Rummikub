@@ -4,6 +4,7 @@ from tkinter import messagebox, simpledialog, scrolledtext
 from typing import List
 
 # Import your existing game classes
+from MovePrinter import MovePrinter
 from Tile import Tile
 from Meld import Meld
 from Rack import Rack
@@ -273,6 +274,8 @@ class RummikubGUI:
 
         # 3. Handle Result
         if best_move:
+            MovePrinter.print_move_guide(self.rack, self.board, best_move)
+
             new_board_tiles = [t for meld in best_move for t in meld.tiles]
 
             tiles_to_remove_counter = Counter(new_board_tiles) - Counter(old_board_tiles)
