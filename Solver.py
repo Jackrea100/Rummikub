@@ -12,7 +12,8 @@ class Solver:
         # Cache stores: {frozenset(tiles_to_cover): (best_score, best_meld_list)}
         self.memo: Dict[FrozenSet[Tile], Tuple[int, List[Meld]]] = {}
 
-    def _calculate_meld_score(self, meld: Meld) -> int:
+    @staticmethod
+    def _calculate_meld_score(meld: Meld) -> int:
         """
         Calculates the strategic score for a single meld (Heuristic Brain).
         This method must be implemented by the user based on desired strategy.
@@ -21,7 +22,7 @@ class Solver:
         #
         # # Example Heuristics (User must implement):
         # for tile in meld.tiles:
-        #     if tile.val in [10, 11, 12, 13]:  # Risk Aversion (Dump high value)
+        #     if tile.val in [10, 11, 12, 13]: # Risk Aversion (Dump high value)
         #         score += 15
         #
         # # You would need a meld.is_run() helper here:
@@ -33,23 +34,34 @@ class Solver:
         # 1. Clear the cache for this new turn
         self.memo = {}
 
-        # 2. Get *all* tiles you're allowed to use (from rack AND board)
-        available_tiles = rack.tiles + board.get_all_tiles()
+        # 2. Get all available tiles
+        all_tiles = rack.tiles + board.get_all_tiles()
 
-        # 3. Find all possible melds (The Accountant step)
-        all_possible_melds = self._find_all_possible_melds(available_tiles)
+        # --- OPTIMIZATION START ---
 
-        # 4. Find the best combination (The Strategist step)
-        # This calls the recursive function, which returns (score, meld_list)
-        (best_score, best_meld_list) = self._find_best_combination(
-            tuple(available_tiles),  # The initial problem state
-            all_possible_melds
-        )
+        # 3. Split the board into independent islands
+        # (Make sure this method name matches what you wrote: _get_connected_components)
+        tile_components = self._get_connected_components(all_tiles)
 
-        # 5. Check if the move is actually worth playing (e.g., score > 0)
-        if best_score > 0:
-            # (TODO: Add logic here to check for 30-point initial meld rule)
-            return best_meld_list
+        final_solution_melds = []
+
+        # 4. Solve each island separately
+        for component_tiles in tile_components:
+            # A. Find possible melds JUST for this small group
+            possible_melds = self._find_all_possible_melds(component_tiles)
+
+            # B. Solve exact cover/max packing JUST for this small group
+            (score, best_melds) = self._find_best_combination(tuple(component_tiles), possible_melds)
+
+            # C. Add the solution for this island to the master list
+            if best_melds:
+                final_solution_melds.extend(best_melds)
+
+        # --- OPTIMIZATION END ---
+
+        # 5. Return the combined result
+        if final_solution_melds:
+            return final_solution_melds
 
         return None
 
@@ -66,7 +78,7 @@ class Solver:
 
         # 2. Base Case: if not tiles_to_cover: return (0, [])
         if not tiles_to_cover:
-            return (0, [])
+            return 0, []
 
         # 3. Recursive Loop with 'best_solution_so_far' tracking
         best_solution = (0, [])
@@ -94,7 +106,8 @@ class Solver:
         all_runs = self._find_all_runs(tiles)
         return all_groups + all_runs
 
-    def _find_all_groups(self, tiles: List[Tile]) -> List[Meld]:
+    @staticmethod
+    def _find_all_groups(tiles: List[Tile]) -> List[Meld]:
         """
         Finds all valid groups (same value, different colors) using combinations.
         """
@@ -126,7 +139,8 @@ class Solver:
 
         return melds_lst
 
-    def _find_all_runs(self, tiles: List[Tile]) -> List[Meld]:
+    @staticmethod
+    def _find_all_runs(tiles: List[Tile]) -> List[Meld]:
         """
         Finds all valid runs (same color, consecutive values) using contiguous slicing.
         """
@@ -164,3 +178,43 @@ class Solver:
                         break
 
         return runs_lst
+
+    @staticmethod
+    def _build_intersection_graph(tiles: List[Tile]) -> Dict[Tile, List[Tile]]:
+        graph = defaultdict(list)
+        for i in range(len(tiles)):
+            for j in range(i + 1, len(tiles)):
+                t1, t2 = tiles[i], tiles[j]
+
+                is_group = t1.val == t2.val and t1.color != t2.color
+                is_run = t1.color == t2.color and abs(t1.val - t2.val) == 1
+
+                if is_group or is_run:
+                    graph[t1].append(t2)
+                    graph[t2].append(t1)
+
+        return graph
+
+    def _get_connected_components(self, tiles: List[Tile]) -> List[List[Tile]]:
+        graph = self._build_intersection_graph(tiles)
+        visited = set()
+        components = []
+
+        for tile in tiles:
+            if tile in visited:
+                continue
+
+            stack = [tile]
+            curr_component = [tile]
+
+            while stack:
+                curr_tile = stack.pop()
+                visited.add(curr_tile)
+
+                for neighbor in graph[curr_tile]:
+                    if neighbor not in visited:
+                        visited.add(neighbor)
+                        stack.append(neighbor)
+                        curr_component.append(neighbor)
+
+            components.append(curr_component)
