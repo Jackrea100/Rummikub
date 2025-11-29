@@ -85,7 +85,12 @@ class Solver:
         for meld in all_melds:
             if set(meld).issubset(tiles_to_cover):
                 current_score = self._calculate_meld_score(meld)
-                remaining_tiles = tuple(set(tiles_to_cover) - set(meld))
+
+                temp_remaining = list(tiles_to_cover)
+                for tile in meld:
+                    temp_remaining.remove(tile)  # Removes only the first matching instance
+                remaining_tiles = tuple(temp_remaining)
+
                 remainder_score, remainder_melds = self._find_best_combination(remaining_tiles, all_melds)
                 total_score = current_score + remainder_score
                 if total_score > best_solution[0]:
@@ -218,3 +223,5 @@ class Solver:
                         curr_component.append(neighbor)
 
             components.append(curr_component)
+
+        return components

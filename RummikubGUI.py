@@ -1,4 +1,5 @@
 import tkinter as tk
+from collections import Counter
 from tkinter import messagebox, simpledialog, scrolledtext
 from typing import List
 
@@ -264,13 +265,21 @@ class RummikubGUI:
         """Calls the Solver class."""
         messagebox.showinfo("Solver", "Running Solver... (Check console for details)")
 
-        # 1. Call the solver
+        # 1. Capture OLD state
+        old_board_tiles = self.board.get_all_tiles()
+
+        # 2. Run Solver
         best_move = self.solver.find_best_move(self.rack, self.board)
 
-        # 2. Handle Result
+        # 3. Handle Result
         if best_move:
-            # The solver returns the NEW list of melds for the board.
-            # We update the board to show this new state.
+            new_board_tiles = [t for meld in best_move for t in meld.tiles]
+
+            tiles_to_remove_counter = Counter(new_board_tiles) - Counter(old_board_tiles)
+            tiles_to_remove = list(tiles_to_remove_counter.elements())
+
+            # Remove them from the rack
+            self.rack.remove_tiles(tiles_to_remove)
             self.board.melds = best_move
 
             # Note: A real game loop would also remove the tiles from the rack.
