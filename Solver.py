@@ -37,9 +37,14 @@ class Solver:
         self.memo = {}
         all_tiles = rack.tiles + board.get_all_tiles()
 
-        # 1. Identify Rack Tile IDs for prioritization
-        # We use IDs (memory addresses) to handle duplicates correctly
+        # 1. Identify IDs for prioritization
         rack_tile_ids = {id(t) for t in rack.tiles}
+
+        # 2. Identify "Existing Melds" (Stability)
+        # We create a list of sets. Each set contains the tiles of an existing board meld.
+        # This allows us to quickly check if a candidate meld is just a copy of an old one.
+        # We use 'frozenset' so we can assume order doesn't matter for equality.
+        existing_meld_sets = [frozenset(m.tiles) for m in board.melds]
 
         tile_components = self._get_connected_components(all_tiles)
 
@@ -50,25 +55,27 @@ class Solver:
 
         for i, component_tiles in enumerate(tile_components):
             comp_start = time.time()
-
-            # Timeout Logic: If component is huge (>20), set a 5s limit
             timeout = 5.0 if len(component_tiles) > 20 else 0
 
             print(f"  > Solving Component {i + 1} (Size {len(component_tiles)})...")
             possible_melds = self._find_all_possible_melds(component_tiles)
 
-            # --- NEW: PRIORITIZE RACK TILES ---
-            # Sort melds so we try the ones using our rack FIRST.
-            # Key 1: Number of rack tiles used (Descending)
-            # Key 2: Total size of meld (Descending)
+            # --- NEW PRIORITY LOGIC ---
             def meld_priority(m: Meld):
+                # Criteria 1: Does it use my rack tiles? (Highest Priority)
                 rack_usage = sum(1 for t in m.tiles if id(t) in rack_tile_ids)
-                return (rack_usage, len(m.tiles))
 
+                # Criteria 2: Is it an exact copy of a meld already on the board?
+                # If yes, it's "stable" and safe. Prioritize it over random new permutations.
+                is_existing = 1 if frozenset(m.tiles) in existing_meld_sets else 0
+
+                # Criteria 3: Larger melds are generally better
+                return rack_usage, is_existing, len(m.tiles)
+
+            # Sort descending: High Rack Usage -> Existing Melds -> Big Melds
             possible_melds.sort(key=meld_priority, reverse=True)
-            # ----------------------------------
+            # --------------------------
 
-            # Run the recursive solver with the sorted list
             (score, best_melds) = self._find_best_combination(tuple(component_tiles), possible_melds, time.time(),
                                                               timeout)
 
