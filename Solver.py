@@ -105,38 +105,43 @@ class Solver:
                                timeout: float = 0) -> Tuple[int, List[Meld]]:
         import time
 
-        # --- NEW: Timeout Check ---
+        # 1. Timeout Check
         if timeout > 0 and (time.time() - start_time > timeout):
-            return 0, []  # Stop searching this branch
-        # --------------------------
+            return 0, []
 
+        # 2. Cache Check
         tiles_key = frozenset(tiles_to_cover)
         if tiles_key in self.memo:
             return self.memo[tiles_key]
 
+        # 3. Base Case
         if not tiles_to_cover:
             return 0, []
 
         best_solution = (0, [])
 
-        # Sort melds by size (descending) to try "good" moves first before timeout
-        # all_melds.sort(key=lambda m: len(m.tiles), reverse=True)
-
         for meld in all_melds:
-            # --- NEW: Timeout Check inside loop ---
+            # Check Timeout inside loop
             if timeout > 0 and (time.time() - start_time > timeout):
-                break  # Stop trying new melds, return what we have
-            # --------------------------------------
+                break
 
+            # Optimization: Only attempt if subset (Value-based check)
             if set(meld).issubset(tiles_to_cover):
                 current_score = self._calculate_meld_score(meld)
 
-                temp_remaining = list(tiles_to_cover)
-                for tile in meld:
-                    temp_remaining.remove(tile)
-                remaining_tiles = tuple(temp_remaining)
+                # --- FIX: Use Standard Removal (Equality) ---
+                # This guarantees the list shrinks by exactly len(meld) tiles.
+                # It removes the first matching tile it finds.
+                try:
+                    temp_remaining = list(tiles_to_cover)
+                    for tile in meld:
+                        temp_remaining.remove(tile)
+                    remaining_tiles = tuple(temp_remaining)
+                except ValueError:
+                    # Should not happen given issubset check, but safe fallback
+                    continue
+                # --------------------------------------------
 
-                # Pass the time info down
                 remainder_score, remainder_melds = self._find_best_combination(remaining_tiles, all_melds, start_time,
                                                                                timeout)
 

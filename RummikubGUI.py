@@ -271,9 +271,10 @@ class RummikubGUI:
 
     def run_solver(self):
         """Calls the Solver class."""
+        from collections import Counter
         messagebox.showinfo("Solver", "Running Solver... (Check console for details)")
 
-        # 1. Capture OLD state
+        # 1. Capture OLD state tiles
         old_board_tiles = self.board.get_all_tiles()
 
         # 2. Run Solver
@@ -281,43 +282,46 @@ class RummikubGUI:
 
         # 3. Handle Result
         if best_move:
-            # A. Calculate which tiles came from the rack
-            # We need to identify the specific Tile objects in the new configuration
-            # that were NOT in the old configuration.
+            # --- HYBRID FIX START ---
 
-            # Simple list subtraction doesn't work well for objects with same value but diff memory addresses.
-            # So we use our ID-based logic or Counter logic again.
+            # Step A: Get all new tiles
+            new_board_tiles = [t for meld in best_move for t in meld.tiles]
 
-            # Strategy:
-            # 1. Count what we had on the board before.
-            # 2. Iterate through the NEW board. If we see a tile we had before, decrement count.
-            # 3. If we don't have it in our 'old' count, it must be new (from rack)!
+            # Step B: Calculate the "Value Difference" using Counter.
+            # This tells us accurately: "We gained one Red 6. We gained zero Red 5s."
+            # It ignores memory addresses/IDs, preventing the "Swap" bug.
+            tiles_gained_counter = Counter(new_board_tiles) - Counter(old_board_tiles)
 
-            from collections import Counter
-            old_counts = Counter(old_board_tiles)
+            # Step C: Identify specific objects to highlight based on the counts
+            highlight_tiles = []
 
-            highlight_tiles = []  # List of specific Tile objects to highlight
+            # We iterate through the NEW board layout.
+            # If we find a tile that matches a "Gained" value, we highlight it
+            # and decrement our "Gained" counter for that value.
+            for tile in new_board_tiles:
+                # 'tile' here acts as a key (uses __hash__/__eq__ based on value)
+                if tiles_gained_counter[tile] > 0:
+                    highlight_tiles.append(tile)
+                    tiles_gained_counter[tile] -= 1
 
-            for meld in best_move:
-                for tile in meld.tiles:
-                    if old_counts[tile] > 0:
-                        old_counts[tile] -= 1
-                    else:
-                        # We didn't have this tile on the board before. It's new!
-                        highlight_tiles.append(tile)
-
-            # B. Remove from Rack (Logic remains the same)
-            # We can just use the list of highlights we just found!
+            # Step D: Remove played tiles from Rack
+            # We can safely use the highlight list because it contains the exact objects
+            # (or value-equivalents) that constitute the difference.
             self.rack.remove_tiles(highlight_tiles)
 
-            # C. Update Board
+            # ------------------------
+
             self.board.melds = best_move
 
-            # D. Update Display with Highlights
-            # We pass the list of 'new' tiles to the refresh method
+            # Pass the specific object list to the display
             self.refresh_display(highlight_tiles=highlight_tiles)
 
-            messagebox.showinfo("Solver Result", f"Best move found! \n\nHighlighted tiles were played from your rack.")
+            # Optional: Print text guide
+            if highlight_tiles:
+                MovePrinter.print_move_guide(self.rack, self.board, best_move)
+
+            messagebox.showinfo("Solver Result",
+                                f"Best move found! \n\nHighlighted {len(highlight_tiles)} tiles played from your rack.")
         else:
             messagebox.showwarning("Solver Result", "No valid moves found.")
 
