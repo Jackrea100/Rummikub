@@ -61,8 +61,8 @@ class Meld:
             return False  # Failed both Group and Run checks
 
     # --- Internal Validation Helpers ---
-
-    def _group(self, real_tiles: List[Tile], num_jokers: int) -> bool:
+    @staticmethod
+    def _group(real_tiles: List[Tile], num_jokers: int) -> bool:
         # 1. Total Size Check (Max 4 tiles)
         if len(real_tiles) + num_jokers not in [3, 4]:
             return False
@@ -74,7 +74,8 @@ class Meld:
 
         return True
 
-    def _run(self, real_tiles: List[Tile], num_jokers: int) -> bool:
+    @staticmethod
+    def _run(real_tiles: List[Tile], num_jokers: int) -> bool:
         # 1. Duplicate Number Check (Must not have R5 and R5, handled by the traffic cop)
         # 2. Calculate Gaps (Consecutive sequence check)
 

@@ -58,12 +58,16 @@ class RummikubGUI:
         # 1. Clear Board Canvas
         self.board_canvas.delete("all")
 
-        # --- FIX: Convert objects to IDs ---
-        # We store the memory addresses (IDs) so we can distinguish duplicates
-        highlight_ids = set()
+        # --- FIX: Use a Counter for highlighting ---
+        # Instead of specific objects, we track counts of values to highlight.
+        # e.g. { "Red 3": 1, "Blue 4": 2 }
+        from collections import Counter
+        highlight_counts = Counter()
         if highlight_tiles:
-            highlight_ids = {id(t) for t in highlight_tiles}
-        # -----------------------------------
+            # Create a simple signature for each tile (Color, Value)
+            for t in highlight_tiles:
+                highlight_counts[(t.color, t.val)] += 1
+        # -------------------------------------------
 
         # Layout Constants
         start_x = 20
@@ -77,10 +81,9 @@ class RummikubGUI:
         row_height = 70
 
         window_width = self.board_canvas.winfo_width()
-        if window_width < 100:
-            window_width = 1000
+        if window_width < 100: window_width = 1000
 
-            # Draw each Meld on the board
+        # Draw each Meld on the board
         for meld in self.board.melds:
             num_tiles = len(meld.tiles)
             meld_pixel_width = (num_tiles * tile_width) + ((num_tiles - 1) * tile_gap)
@@ -89,20 +92,19 @@ class RummikubGUI:
                 current_x = start_x
                 current_y += row_height
 
-            # --- UPDATE CALL: Pass highlight_ids instead of the list ---
-            self.draw_meld(self.board_canvas, meld, current_x, current_y, highlight_ids)
+            # PASS THE COUNTER to draw_meld
+            self.draw_meld(self.board_canvas, meld, current_x, current_y, highlight_counts)
 
             current_x += meld_pixel_width + meld_gap
 
-        # 2. Draw Rack (Standard flow)
+        # ... (Rack drawing remains the same) ...
         for widget in self.rack_frame.winfo_children():
             widget.destroy()
-
         for tile in self.rack.tiles:
             lbl = self.create_tile_widget(self.rack_frame, tile)
             lbl.pack(side=tk.LEFT, padx=2, pady=10)
 
-    def draw_meld(self, canvas, meld, start_x, start_y, highlight_ids):
+    def draw_meld(self, canvas, meld, start_x, start_y, highlight_counts):
         """Draws a grouping of tiles on the canvas to represent a Meld."""
         tile_width = 40
         tile_height = 50
@@ -112,18 +114,19 @@ class RummikubGUI:
 
         for tile in meld.tiles:
             # Determine Background Color
-            bg_color = "#f0f0f0"  # Default Grey/White
+            bg_color = "#f0f0f0"  # Default
 
-            # --- FIX: Check Identity ---
-            if id(tile) in highlight_ids:
-                bg_color = "#ffff99"  # Light Yellow Highlight
-            # ---------------------------
+            # --- FIX: Check Counter and Decrement ---
+            sig = (tile.color, tile.val)
+            if highlight_counts[sig] > 0:
+                bg_color = "#ffff99"  # Highlight!
+                highlight_counts[sig] -= 1  # Consumption: Don't highlight the next identical tile
+            # ----------------------------------------
 
-            # Draw Tile Rectangle with new BG color
+            # Draw Tile
             canvas.create_rectangle(current_x, start_y, current_x + tile_width, start_y + tile_height,
                                     fill=bg_color, outline="black", width=2)
 
-            # Draw Text
             text_color = tile.color.lower()
             if text_color == "joker": text_color = "purple"
             display_text = "J" if tile.is_joker else str(tile.val)
